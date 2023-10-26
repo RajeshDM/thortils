@@ -62,6 +62,8 @@ from .grid_map import GridMap
 
 from . import vision
 
+from .basic_config import config
+
 def ai2thor_version():
     import os
     abs_path = os.path.abspath(os.path.dirname(__file__))

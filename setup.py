@@ -16,6 +16,7 @@ setup(name='thortils',
           'matplotlib',
           'ai2thor=={}'.format(AI2THOR_VERSION),
           'open3d==0.13.0',
+          'icecream',
           'tqdm'
       ],
       license='MIT',
