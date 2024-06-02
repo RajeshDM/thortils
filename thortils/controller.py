@@ -57,7 +57,7 @@ def launch_controller(config):
         width                      = config.get("IMAGE_WIDTH"                  ,constants.IMAGE_WIDTH),
         height                     = config.get("IMAGE_HEIGHT"                 ,constants.IMAGE_HEIGHT),
         fieldOfView                = config.get("FOV"                          ,constants.FOV),
-        rotateStepDegrees          = config.get("H_ROTATION"                   ,constants.H_ROTATION),
+        #rotateStepDegrees          = config.get("H_ROTATION"                   ,constants.H_ROTATION),
         x_display                  = config.get("x_display"                    , None),
         host                       = config.get("host"                         , "127.0.0.1"),
         port                       = config.get("port"                         , 0),

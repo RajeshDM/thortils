@@ -72,7 +72,8 @@ class GridMap:
         Transform theta (degrees) from ai2thor coordinate system to gridmap coordinate system.
         In thor, 0 degree is +z, clockwise rotation.
         In grid map, 0 degree is +x, counterclockwise rotation;"""
-        return 90 - thor_yaw
+        #return 90 - thor_yaw
+        return (90 - thor_yaw ) %360
 
     @staticmethod
     def to_thor_yaw(grid_yaw):
@@ -84,6 +85,7 @@ class GridMap:
         Transform CHANGE in theta (DEGREES) from ai2thor coordinate system to gridmap coordinate system.
         ai2thor: clockwise; gridmap: counterclockwise
         """
+        #return -thor_dyaw
         return -thor_dyaw
 
     @staticmethod

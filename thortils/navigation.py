@@ -203,6 +203,26 @@ def _same_pose(pose1, pose2, tolerance=1e-4, angle_tolerance=5):
         and abs(pitch1 - pitch2) <= angle_tolerance\
         and abs(yaw1 - yaw2) <= angle_tolerance
 
+def convert_grid_to_thor_pitch(grid_pitch):
+    #return (360 - grid_pitch) #% 360
+    '''
+    if grid_pitch < 180 :
+        return -grid_pitch
+    else :
+        return 360 - grid_pitch
+    '''
+    return (grid_pitch + 180) % 360 - 180
+
+def convert_angle_360_to_180(angle):
+    return (angle + 180) % 360 - 180
+
+def get_angle_diff_in_180(angle1, angle2):
+    # angle1, angle2 are in -180 to 180
+    diff = abs(angle1 - angle2)
+    if diff > 180:
+        return 360 - diff
+
+    return diff
 
 def _nav_heuristic(pose, goal):
     """Returns underestimate of the cost from pose to goal
