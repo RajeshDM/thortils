@@ -86,6 +86,25 @@ def _valid_pose(pose, reachable_positions):
         and 0 <= pose[2] < 360.0\
         and 0 <= pose[3] < 360.0
 
+def _is_valid_transition(pose1, pose2, reachable_positions):
+    p1 = _simplify_pose(pose1)[:2]
+    p2 = _simplify_pose(pose2)[:2]
+
+    i = 0
+    min_x = min(p1[i],p2[i])
+    max_x = max(p1[i],p2[i])
+
+    i=1
+    min_y = min(p1[i],p2[i])
+    max_y = max(p1[i],p2[i])
+
+    for i,x_elem in enumerate(range(int(min_x*4), int(max_x*4)+1)):
+        for j,y_elem in enumerate(range(int(min_y*4), int(max_y*4)+1)):
+            if (x_elem/4,y_elem/4) not in reachable_positions:
+                return False
+
+    return True
+
 def _move_by_vw(robot_pose, action_delta,
                 grid_size=None, diagonal_ok=False):
     """
@@ -347,6 +366,9 @@ def find_navigation_plan(start, goal, navigation_actions,
                                        grid_size=grid_size,
                                        diagonal_ok=diagonal_ok)
             if not _valid_pose(_round_pose(next_pose), reachable_positions):
+                continue
+
+            if not _is_valid_transition(current_pose, next_pose, reachable_positions):
                 continue
 
             new_cost = cost[current_pose] + _cost(action)
