@@ -83,8 +83,8 @@ def _simplify_pose(robot_pose):
 def _valid_pose(pose, reachable_positions):
     pose = _simplify_pose(pose)
     return pose[:2] in reachable_positions\
-        and 0 <= pose[2] < 360.0\
-        and 0 <= pose[3] < 360.0
+        and 0 <= pose[2] <= 360.0\
+        and 0 <= pose[3] <= 360.0
 
 def _is_valid_transition(pose1, pose2, reachable_positions):
     p1 = _simplify_pose(pose1)[:2]
@@ -217,10 +217,20 @@ def _same_pose(pose1, pose2, tolerance=1e-4, angle_tolerance=5):
         pitch2, yaw2, _ = pose2[1]
     else:
         x2, z2, pitch2, yaw2 = pose1
+        
+    #NEED TO CHANGE THIS
+    # TO ONLY USE ANGLES THAT ARE CLOSE BY
+
+    pitch_diff = get_angle_diff_in_360(pitch1, pitch2)
+    yaw_diff = get_angle_diff_in_360(yaw1, yaw2)
 
     return euclidean_dist((x1, z1), (x2, z2)) <= tolerance\
-        and abs(pitch1 - pitch2) <= angle_tolerance\
-        and abs(yaw1 - yaw2) <= angle_tolerance
+        and pitch_diff <= angle_tolerance\
+        and yaw_diff <= angle_tolerance
+
+    #return euclidean_dist((x1, z1), (x2, z2)) <= tolerance\
+    #    and abs(pitch1 - pitch2) <= angle_tolerance\
+    #    and abs(yaw1 - yaw2) <= angle_tolerance
 
 def convert_grid_to_thor_pitch(grid_pitch):
     #return (360 - grid_pitch) #% 360
@@ -232,8 +242,6 @@ def convert_grid_to_thor_pitch(grid_pitch):
     '''
     return (grid_pitch + 180) % 360 - 180
 
-def convert_angle_360_to_180(angle):
-    return (angle + 180) % 360 - 180
 
 def get_angle_diff_in_180(angle1, angle2):
     # angle1, angle2 are in -180 to 180
@@ -242,6 +250,43 @@ def get_angle_diff_in_180(angle1, angle2):
         return 360 - diff
 
     return diff
+
+def get_angle_diff_in_360(angle1, angle2):
+    # angle1, angle2 are in 0 to 360
+    angle1 = convert_angle_360_to_180(angle1)
+    angle2 = convert_angle_360_to_180(angle2)
+
+    diff_in_180 = get_angle_diff_in_180(angle1, angle2)
+    diff = convert_angle_180_to_360(diff_in_180)
+
+    return diff
+
+def convert_angle_180_to_360(angle):
+    return (angle + 360) % 360
+
+def convert_angle_360_to_180(angle):
+    return (angle + 180) % 360 - 180
+
+def closest_angle_in_360(target_angle, angles):
+    target_angle = convert_angle_360_to_180(target_angle)
+    angles = [convert_angle_360_to_180(angle) for angle in angles]
+
+    angle_in_180 = closest_angle_in_180(target_angle, angles)
+    return convert_angle_180_to_360(angle_in_180)
+
+def closest_angle_in_180(target_angle, angles):
+    min_diff = float('inf')
+    closest_angle = None
+    for angle in angles:
+        diff = abs(target_angle - angle)
+        if diff > 180:
+            diff = 360 - diff
+
+        if diff < min_diff:
+            min_diff = diff
+            closest_angle = angle
+
+    return closest_angle
 
 def _nav_heuristic(pose, goal):
     """Returns underestimate of the cost from pose to goal
@@ -368,6 +413,7 @@ def find_navigation_plan(start, goal, navigation_actions,
             if not _valid_pose(_round_pose(next_pose), reachable_positions):
                 continue
 
+            #This is required for THOR as it cannot do diagonal movement when it's neighbours are blocked
             if not _is_valid_transition(current_pose, next_pose, reachable_positions):
                 continue
 
