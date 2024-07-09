@@ -252,14 +252,19 @@ def get_angle_diff_in_180(angle1, angle2):
     return diff
 
 def get_angle_diff_in_360(angle1, angle2):
+    # NOT USING OTHER FUNCTIONS BECAUSE OF SPEED
     # angle1, angle2 are in 0 to 360
-    angle1 = convert_angle_360_to_180(angle1)
-    angle2 = convert_angle_360_to_180(angle2)
+    # convering to -180 to 180
+    angle1 = (angle1 + 180) % 360 - 180
+    angle2 = (angle2 + 180) % 360 - 180
 
-    diff_in_180 = get_angle_diff_in_180(angle1, angle2)
-    diff = convert_angle_180_to_360(diff_in_180)
+    #Getting difference in 180
+    diff_in_180 = abs(angle1 - angle2)
+    if diff_in_180 > 180:
+        diff_in_180 = 360 - diff_in_180
 
-    return diff
+    #converting to 360 and returning
+    return (diff_in_180 + 360) % 360
 
 def convert_angle_180_to_360(angle):
     return (angle + 360) % 360
@@ -268,11 +273,17 @@ def convert_angle_360_to_180(angle):
     return (angle + 180) % 360 - 180
 
 def closest_angle_in_360(target_angle, angles):
-    target_angle = convert_angle_360_to_180(target_angle)
-    angles = [convert_angle_360_to_180(angle) for angle in angles]
+    #convert target angle from 0-360 to -180 to 180
+    target_angle = (target_angle + 180) % 360 - 180
 
+    #Convert all angles to -180 to 180 for difference
+    angles = [(angle+180)% 360-180 for angle in angles]
+
+    #Find difference in -180 to 180
     angle_in_180 = closest_angle_in_180(target_angle, angles)
-    return convert_angle_180_to_360(angle_in_180)
+
+    #return after converting back to 0-360 range 
+    return (angle_in_180 + 360) % 360
 
 def closest_angle_in_180(target_angle, angles):
     min_diff = float('inf')

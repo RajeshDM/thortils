@@ -14,7 +14,7 @@ from .controller import (launch_controller,
                          thor_scene_from_controller,
                          thor_grid_size_from_controller)
 from .agent import thor_reachable_positions
-from .map3d import Mapper3D
+from .map3d import Mapper3D,Mapper3DRearrange
 from .utils import remap, euclidean_dist
 
 
@@ -164,6 +164,25 @@ def proper_convert_scene_to_grid_map(controller,
                                    ceiling_cut=ceiling_cut)
     return grid_map
 
+def proper_convert_scene_to_grid_map_rearrange(controller,
+                                     floor_cut=0.15,
+                                     ceiling_cut=0.15,
+                                     **kwargs):
+    """
+    kwargs are optional arguments for Mapper3D.automate.
+    Includes:
+        num_stops=20,
+        num_rotates=4,
+        sep=1.25,
+        downsample=True,
+        **kwargs):
+    """
+    # Will use Mapper3DRearrange which has updated point cloud computation
+    mapper = Mapper3DRearrange(controller)
+    mapper.automate(**kwargs)
+    grid_map = mapper.get_grid_map(floor_cut=floor_cut,
+                                   ceiling_cut=ceiling_cut)
+    return grid_map
 
 def match_scene_name(scene_name):
     """

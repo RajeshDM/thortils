@@ -15,7 +15,7 @@ from thortils.vision import thor_rgbd
 
 from thortils import constants
 from thortils.utils.math import sep_spatial_sample, remap, euclidean_dist
-from thortils.grid_map import GridMap
+from thortils.grid_map import GridMap,GridMapRearrange
 
 
 class Map3D:
@@ -97,6 +97,7 @@ class Map3D:
 
     def downsample(self):
         self.pcd = self.pcd.voxel_down_sample(voxel_size=0.05)
+
 
     def to_grid_map(self,
                     ceiling_cut=1.0,
@@ -335,3 +336,219 @@ class Mapper3D:
         reachable_positions = tt.thor_reachable_positions(self.controller)
         return self.map.to_grid_map(thor_reachable_positions=reachable_positions,
                                     **kwargs)
+
+
+class Map3DRearrange(Map3D):
+    def __init__(self):
+        self.pcd = o3d.geometry.PointCloud()
+
+    def to_grid_map(self,
+                    ceiling_cut=1.0,
+                    floor_cut=0.1,
+                    grid_size=0.25,
+                    thor_reachable_positions=None,
+                    scene=None,
+                    debug=False):
+        """ 
+        See base class to_grid_map for more details
+        
+        The change is we add a point cloud that stores the entire room and the 
+        grid map boundaries are computed using boundary points as well (in the original,
+        they are removed as part of filtering)
+        """
+        downpcd = self.pcd.voxel_down_sample(voxel_size=0.05)
+        points = np.asarray(downpcd.points)
+
+        all_points = np.asarray(self.pcd.points)
+
+        xmax, ymax, zmax = np.max(points, axis=0)
+        xmin, ymin, zmin = np.min(points, axis=0)
+
+        # Boundary points;
+        # Note: aggressively cutting ceiling and floor points;
+        # This may not be desirable if you only want to exclude
+        # points corresponding to the lights (this might be achievable
+        # by a combination of semantic segmantation and projection;
+        # left as a todo).
+        floor_points_filter = np.isclose(points[:,1], ymin, atol=floor_cut)
+        ceiling_points_filter = np.isclose(points[:,1], ymax, atol=ceiling_cut)
+        xwalls_min_filter = np.isclose(points[:,0], xmin, atol=0.05)
+        xwalls_max_filter = np.isclose(points[:,0], xmax, atol=0.05)
+        zwalls_min_filter = np.isclose(points[:,2], zmin, atol=0.05)
+        zwalls_max_filter = np.isclose(points[:,2], zmax, atol=0.05)
+        boundary_filter = np.any([floor_points_filter,
+                                  ceiling_points_filter,
+                                  xwalls_min_filter,
+                                  xwalls_max_filter,
+                                  zwalls_min_filter,
+                                  zwalls_max_filter], axis=0)
+        not_boundary_filter = np.logical_not(boundary_filter)
+
+        floor_points_filter_non_downsampled = np.logical_not(np.isclose(all_points[:,1], ymin, atol=floor_cut))
+        ceiling_points_filter_non_downsampled = np.logical_not(np.isclose(all_points[:,1], ymax, atol=ceiling_cut))
+
+        # For Debugging
+        if debug:
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(np.asarray(points[boundary_filter]))
+            o3d.visualization.draw_geometries([pcd])
+
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(np.asarray(points[not_boundary_filter]))
+            o3d.visualization.draw_geometries([pcd])
+
+        # The simplest 2D grid map is Floor + Non-boundary points in 2D
+        # The floor points will be reachable, and the other ones are not.
+        # Points that will map to grid locations, but origin is NOT at (0,0);
+        # A lot of this code is borrowed from thortils.scene.convert_scene_to_grid_map.
+        map_points_filter = np.any([floor_points_filter,
+                                    not_boundary_filter], axis=0)
+
+        room_with_boundaries = np.all([floor_points_filter_non_downsampled,
+                                       ceiling_points_filter_non_downsampled],axis=0)
+
+        thor_full_room_grid_points = (all_points[room_with_boundaries] / grid_size).astype(int)
+
+        thor_grid_points = (points[map_points_filter] / grid_size).astype(int)
+
+        (thor_gx,thor_og_y,thor_gy),thor_gx_range, thor_gy_range, = self.get_ranges(thor_grid_points)
+        (thor_full_gx,thor_og_full_y,thor_full_gy),thor_full_gx_range, thor_full_gy_range = self.get_ranges(thor_full_room_grid_points)
+
+
+        # Get combined ranges
+        combined_x_range = self.get_combined_range(thor_gx_range, thor_full_gx_range)
+        combined_y_range = self.get_combined_range(thor_gy_range, thor_full_gy_range)
+
+        #Get combined max width and length
+        width = int(combined_x_range[1] - combined_x_range[0]) + 1
+        length = int(combined_y_range[1] - combined_y_range[0]) + 1
+    
+        # remap coordinates to be nonnegative (origin AT (0,0)) but with combined coordinates to 
+        # include all boudaires as well
+        gx = remap(thor_gx, combined_x_range[0], combined_x_range[1], 0, width).astype(int)
+        gy = remap(thor_gy, combined_y_range[0], combined_y_range[1], 0, length).astype(int)
+
+        full_gx = remap(thor_full_gx, combined_x_range[0], combined_x_range[1], 0, width).astype(int)
+        full_gy = remap(thor_full_gy, combined_y_range[0], combined_y_range[1], 0, length).astype(int)
+
+        gx_range = (min(gx), max(gx)+1)
+        gy_range = (min(gy), max(gy)+1)
+
+        full_gx_range = (min(full_gx), max(full_gx)+1)
+        full_gy_range = (min(full_gy), max(full_gy)+1)
+
+        # Little test: can convert back
+        try:
+            assert all(remap(gx, gx_range[0], gx_range[1], combined_x_range[0], combined_x_range[1]).astype(int) == thor_gx)
+            assert all(remap(gy, gy_range[0], gy_range[1], combined_y_range[0], combined_y_range[1]).astype(int) == thor_gy)
+        except AssertionError as ex:
+            print("Unable to remap Old coordinates")
+            raise ex
+
+        try:
+            assert all(remap(full_gx, full_gx_range[0], full_gx_range[1], combined_x_range[0], combined_x_range[1]).astype(int) == thor_full_gx)
+            assert all(remap(full_gy, full_gy_range[0], full_gy_range[1], combined_y_range[0], combined_y_range[1]).astype(int) == thor_full_gy)
+        except AssertionError as ex:
+            print("Unable to remap updated coordinates")
+            raise ex
+
+        full_remapped_points = np.stack([gx,thor_og_y, gy]).T
+        remapped_pcd = o3d.geometry.PointCloud()
+        remapped_pcd.points = o3d.utility.Vector3dVector(np.asarray(full_remapped_points)) 
+
+        thor_reachable_points = points[floor_points_filter]
+        thor_reachable_points[:,1] = 0
+        thor_reachable_grid_points = (thor_reachable_points / grid_size).astype(int)
+        thor_reachable_gx = thor_reachable_grid_points[:,0]
+        thor_reachable_gy = thor_reachable_grid_points[:,2]
+        thor_reachable_gy = -thor_reachable_gy  # see [**] #length
+
+        thor_obstacle_points = points[not_boundary_filter]
+        thor_obstacle_points[:,1] = 0
+        thor_obstacle_grid_points = (thor_obstacle_points / grid_size).astype(int)
+        thor_obstacle_gx = thor_obstacle_grid_points[:,0]
+        thor_obstacle_gy = thor_obstacle_grid_points[:,2]
+        thor_obstacle_gy = -thor_obstacle_gy  # see [**] length
+
+        # For Debugging
+        if debug:
+            reachable_colors = np.full((thor_reachable_points.shape[0], 3), (0.7, 0.7, 0.7))
+            obstacle_colors = np.full((thor_obstacle_points.shape[0], 3), (0.2, 0.2, 0.2))
+
+            # We now grab points
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(np.asarray(thor_reachable_points))
+            pcd.colors = o3d.utility.Vector3dVector(np.asarray(reachable_colors))
+
+            # We now grab points
+            pcd2 = o3d.geometry.PointCloud()
+            pcd2.points = o3d.utility.Vector3dVector(np.asarray(thor_obstacle_points))
+            pcd2.colors = o3d.utility.Vector3dVector(np.asarray(obstacle_colors))
+            o3d.visualization.draw_geometries([pcd, pcd2])
+
+        gx_reachable = remap(thor_reachable_gx, thor_gx_range[0], thor_gx_range[1], 0, width).astype(int)
+        gy_reachable = remap(thor_reachable_gy, thor_gy_range[0], thor_gy_range[1], 0, length).astype(int)
+        gx_obstacles = remap(thor_obstacle_gx, thor_gx_range[0], thor_gx_range[1], 0, width).astype(int)
+        gy_obstacles = remap(thor_obstacle_gy, thor_gy_range[0], thor_gy_range[1], 0, length).astype(int)
+
+        all_positions = set((x,y) for x in range(width) for y in range(length))
+        grid_map_reachable_positions = set(zip(gx_reachable, gy_reachable))
+        grid_map_obstacle_positions = set(zip(gx_obstacles, gy_obstacles))
+
+        grid_map = GridMapRearrange(width, length,
+                           grid_map_obstacle_positions,
+                           unknown=(all_positions\
+                                    - grid_map_obstacle_positions\
+                                    - grid_map_reachable_positions),
+                           name=scene,
+                           ranges_in_thor=(thor_gx_range, thor_gy_range),
+                           grid_size=grid_size,
+                           point_cloud=remapped_pcd,)
+
+        if thor_reachable_positions is not None:
+            obstacles = grid_map.obstacles
+            correct_reachable_positions = set()
+            for thor_pos in thor_reachable_positions:
+                grid_pos = grid_map.to_grid_pos(*thor_pos)
+                correct_reachable_positions.add(grid_pos)
+                if grid_pos in obstacles:
+                    obstacles.remove(grid_pos)
+
+            for pos in grid_map.free_locations:
+                if pos not in correct_reachable_positions:
+                    obstacles.add(pos)
+            grid_map.update(obstacles, unknown=grid_map.unknown)
+        return grid_map
+
+    def get_ranges(self, thor_grid_points ):
+        thor_gx = thor_grid_points[:,0]
+        thor_og_y = thor_grid_points[:,1]
+        thor_gy = thor_grid_points[:,2]
+        # Because of the axis-flip coordinate issue [**]
+        thor_gy = -thor_gy
+        thor_gx_range = (min(thor_gx), max(thor_gx) + 1)
+        thor_gy_range = (min(thor_gy), max(thor_gy) + 1)
+
+        return (thor_gx,thor_og_y,thor_gy) ,thor_gx_range, thor_gy_range#, width, length 
+        #return thor_gx_range,thor_gy_range
+
+    def get_combined_range(self,original_range, transformed_range ):
+        combined_min = min(original_range[0], transformed_range[0])
+        combined_max = max(original_range[1], transformed_range[1])
+        return (combined_min, combined_max)
+
+class Mapper3DRearrange(Mapper3D):
+    """This is intended to be a convenience object for building
+    a 3D map with one set of camera intrinsic parameters, and
+    interfacing directly with ai2thor events.
+    
+    This is an updated version on MAPPER3D to handle rearrangement related requirements.
+    Namely - it uses Map3DRearrange instead of Map3D, and it has a method to 
+    also get point cloud along with grid map for multi-room environments as well as occluded world 
+    computation (when the agent holding onto something)
+    """
+
+    def __init__(self, controller):
+        self.controller = controller
+        self.intrinsic = pj.thor_camera_intrinsic(controller)
+        self._map = Map3DRearrange()

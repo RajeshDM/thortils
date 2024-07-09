@@ -9,6 +9,7 @@ import sys
 import numpy as np
 from collections import deque
 from .utils import remap, to_degrees, euclidean_dist
+import open3d
 
 def neighbors(x,y):
     return [(x+1, y), (x-1,y),
@@ -337,3 +338,64 @@ class GridMap:
                        name=data["name"],
                        ranges_in_thor=data["ranges_in_thor"],
                        grid_size=data["grid_size"])
+
+class GridMapRearrange(GridMap):
+    """
+    Adding point cloud information to grid map
+    """
+    def __init__(self, width, length, obstacles,
+                 unknown=None, name="grid_map",
+                 ranges_in_thor=None, grid_size=None,point_cloud=None):
+
+        super().__init__(width, length, obstacles,unknown, name, ranges_in_thor, grid_size)
+        self.full_point_cloud = point_cloud
+
+    @staticmethod
+    def load(loadpath):
+        with open(loadpath) as f:
+            data = json.load(f)
+
+        obstacles = set(map(tuple, data["obstacles"]))
+        unknown = set(map(tuple, data["unknown"]))
+        point_cloud = open3d.io.read_point_cloud(loadpath.replace(".json",".pcd"))
+        return GridMapRearrange(data["width"],
+                       data["length"],
+                       obstacles,
+                       unknown=unknown,
+                       name=data["name"],
+                       ranges_in_thor=data["ranges_in_thor"],
+                       grid_size=data["grid_size"],
+                       point_cloud=point_cloud)
+
+    def save(self, savepath):
+        """Saves this grid map as a json file to the save path.
+        Args:
+            savepath (Ste): Path to the output .json file"""
+
+        obstacles_arr = [list(map(int, pos)) for pos in self.obstacles]
+        unknown_arr = [list(map(int, pos)) for pos in self.unknown]
+
+        output = {
+            'width': int(self.width),
+            'length': int(self.length),
+            'obstacles': obstacles_arr,
+            'unknown': unknown_arr,
+            'name': self.name,
+            #'point_cloud': self.full_point_cloud
+        }
+
+        if self.ranges_in_thor is not None:
+            thor_gx_min, thor_gx_max = self.ranges_in_thor[0]
+            thor_gy_min, thor_gy_max = self.ranges_in_thor[1]
+            output['ranges_in_thor'] = [[int(thor_gx_min), int(thor_gx_max)],
+                                        [int(thor_gy_min), int(thor_gy_max)]]
+        else:
+            output['ranges_in_thor'] = 'null'
+
+        output['grid_size'] = self.grid_size\
+            if self.grid_size is not None else "null"
+
+        with open(savepath, 'w') as f:
+            json.dump(output, f)
+
+        open3d.io.write_point_cloud(savepath.replace(".json",".pcd"), self.full_point_cloud)

@@ -340,3 +340,49 @@ def project_bbox_to_grids(bbox, depth, grid_map, intrinsic,
         return grids, color
     else:
         return grids
+
+def line_voxel_intersect(start, end, voxel_grid, voxel_size,check_percentage=0.8):
+
+    start = np.array(start)
+    end = np.array(end)
+
+    #We don't check all the way because the object itself might be in the way of the line
+    #to the center of the voxel - this number 80% might need to tested around
+    end_80 = start + (end - start) * check_percentage
+    
+    direction = end_80 - start
+
+    step = np.sign(direction).astype(int)  # Convert to int
+    tDelta = np.zeros(3)
+    for i in range(3):
+        tDelta[i] = voxel_size / abs(direction[i]) if direction[i] != 0 else np.inf
+    
+    #tDelta = np.where(direction != 0, voxel_size / np.abs(direction), np.inf)
+    
+    voxel = np.floor(start / voxel_size).astype(int)
+    end_voxel = np.floor(end / voxel_size).astype(int)
+    
+    #tMax = (np.floor(start / voxel_size) + 0.5 + step * 0.5) * voxel_size
+    #tMax = (tMax - start) / direction
+
+    # Calculate tMax safely
+    tMax = np.zeros(3)
+    for i in range(3):
+        if direction[i] != 0:
+            tMax[i] = ((np.floor(start[i] / voxel_size) + 0.5 + 0.5 * step[i]) * voxel_size - start[i]) / direction[i]
+        else:
+            tMax[i] = np.inf if step[i] >= 0 else -np.inf
+    
+    while True : 
+        if tuple(voxel) in voxel_grid:
+            return True
+        
+        if np.any((voxel - end_voxel) * step >= 0):
+            break
+        
+        mask = tMax == np.min(tMax)
+        voxel[mask] += step[mask]
+        tMax[mask] += tDelta[mask]
+    
+    #return tuple(end_voxel) in voxel_grid
+    return False
