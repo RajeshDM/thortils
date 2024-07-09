@@ -345,7 +345,9 @@ def find_navigation_plan(start, goal, navigation_actions,
                          angle_tolerance=5,
                          diagonal_ok=False,
                          return_pose=False,
-                         debug=False):
+                         debug=False,
+                         point_cloud=None,
+                         is_object_held=False):
     """Returns a navigation plan as a list of navigation actions. Uses A*
 
     Recap of A*: A* selects the path that minimizes
@@ -428,6 +430,10 @@ def find_navigation_plan(start, goal, navigation_actions,
             if not _is_valid_transition(current_pose, next_pose, reachable_positions):
                 continue
 
+            if is_object_held:
+                if collision_3d(point_cloud, current_pose, next_pose):
+                    continue
+
             new_cost = cost[current_pose] + _cost(action)
             if new_cost < cost.get(next_pose, float("inf")):
                 cost[next_pose] = new_cost
@@ -441,6 +447,9 @@ def find_navigation_plan(start, goal, navigation_actions,
         return None, _expanded_poses
     else:
         return None
+
+def collision_3d(point_cloud, current_pose, next_pose):
+    return False
 
 def get_shortest_path_to_object(controller, object_id,
                                 start_position, start_rotation,

@@ -452,7 +452,7 @@ class Map3DRearrange(Map3D):
             print("Unable to remap updated coordinates")
             raise ex
 
-        full_remapped_points = np.stack([gx,thor_og_y, gy]).T
+        full_remapped_points = np.stack([full_gx,thor_og_full_y, full_gy]).T
         remapped_pcd = o3d.geometry.PointCloud()
         remapped_pcd.points = o3d.utility.Vector3dVector(np.asarray(full_remapped_points)) 
 
